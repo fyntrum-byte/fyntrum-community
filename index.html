@@ -452,7 +452,11 @@ function getInitials(name){return(name||'').split(' ').map(w=>w[0]).join('').toU
 function getAvCls(str){const colors=['g','b','p'];return(str||'').charCodeAt(0)%2===0?'g':colors[(str||'').charCodeAt(0)%colors.length];}
 
 async function sbFetch(path,opts={}){
-  return fetch(SB_URL+path,{headers:{'apikey':SB_KEY,'Authorization':'Bearer '+(currentUser?.access_token||SB_KEY),'Content-Type':'application/json',...(opts.headers||{})},...opts});
+  const token=(currentUser&&currentUser.access_token)?currentUser.access_token:SB_KEY;
+  const baseHeaders={'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'};
+  const mergedHeaders=Object.assign({},baseHeaders,opts.headers||{});
+  const {headers,...restOpts}=opts;
+  return fetch(SB_URL+path,{headers:mergedHeaders,...restOpts});
 }
 
 // Detectar token de recuperación en la URL al cargar
