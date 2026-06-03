@@ -593,7 +593,58 @@ function buildPostHTML(p){
   const utc5=new Date(date.getTime()-5*3600000+date.getTimezoneOffset()*60000);
   const label=`${String(utc5.getDate()).padStart(2,'0')} ${MONTHS[utc5.getMonth()].slice(0,3)} · ${String(utc5.getHours()).padStart(2,'0')}:${String(utc5.getMinutes()).padStart(2,'0')}`;
   const avCls=isAdmin?'o':getAvCls(p.user_name||'');
-  return`<div class="fp"><div class="fph"><div class="fav ${avCls}">${p.user_initials||'?'}</div><div style="flex:1"><div class="fname">${p.user_name||'Usuario'}${badge}</div><div class="ftime">${label}</div></div></div>${rtag}<div class="fbody">${p.content}</div><div class="ffoot"><div class="frx"><i class="ti ti-heart"></i>${p.likes||0}</div><div class="frx"><i class="ti ti-message-circle"></i>0</div>${pbadge}</div></div>`;
+  const canEdit=currentUser&&(currentUser.email===ADMIN_EMAIL||currentUser.id===p.user_id);
+  const actions=canEdit?`
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button onclick="editPost('${p.id}','${p.content.replace(/'/g,"\'")}',this)" style="background:none;border:0.5px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:11px;color:var(--text3);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;display:flex;align-items:center;gap:4px"><i class="ti ti-pencil"></i>Editar</button>
+      <button onclick="deletePost('${p.id}',this)" style="background:none;border:0.5px solid #3A1A1A;border-radius:7px;padding:4px 9px;font-size:11px;color:#FF6060;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;display:flex;align-items:center;gap:4px"><i class="ti ti-trash"></i>Borrar</button>
+    </div>`:'';
+  return`<div class="fp" id="post-${p.id}"><div class="fph"><div class="fav ${avCls}">${p.user_initials||'?'}</div><div style="flex:1"><div class="fname">${p.user_name||'Usuario'}${badge}</div><div class="ftime">${label}</div></div></div>${rtag}<div class="fbody" id="body-${p.id}">${p.content}</div><div class="ffoot"><div class="frx"><i class="ti ti-heart"></i>${p.likes||0}</div><div class="frx"><i class="ti ti-message-circle"></i>0</div>${pbadge}${actions}</div></div>`;
+}
+
+async function deletePost(id, btn){
+  if(!confirm('¿Seguro que quieres borrar este post?'))return;
+  btn.disabled=true;
+  try{
+    const r=await sbFetch(`/rest/v1/posts?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    if(r.ok){
+      const el=document.getElementById('post-'+id);
+      if(el)el.remove();
+    }else{alert('Error al borrar.');}
+  }catch(e){alert('Error de conexión.');}
+}
+
+async function editPost(id, currentContent, btn){
+  const bodyEl=document.getElementById('body-'+id);
+  if(!bodyEl)return;
+  // Si ya está en modo edición, cancelar
+  if(btn.dataset.editing==='1'){
+    bodyEl.innerHTML=btn.dataset.original;
+    btn.innerHTML='<i class="ti ti-pencil"></i>Editar';
+    btn.dataset.editing='0';
+    return;
+  }
+  // Guardar contenido original
+  btn.dataset.original=bodyEl.innerHTML;
+  btn.dataset.editing='1';
+  btn.innerHTML='<i class="ti ti-x"></i>Cancelar';
+  // Mostrar textarea inline
+  bodyEl.innerHTML=`<textarea id="edit-ta-${id}" style="width:100%;background:#0F1419;border:0.5px solid var(--green-border);border-radius:9px;padding:10px;color:var(--text);font-size:13px;font-family:Plus Jakarta Sans,sans-serif;resize:vertical;min-height:70px;outline:none">${currentContent}</textarea>
+    <button onclick="saveEdit('${id}',this)" style="margin-top:8px;padding:7px 16px;background:var(--green);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif">Guardar cambios</button>`;
+}
+
+async function saveEdit(id, btn){
+  const ta=document.getElementById('edit-ta-'+id);
+  if(!ta)return;
+  const newContent=ta.value.trim();
+  if(!newContent)return;
+  btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    const r=await sbFetch(`/rest/v1/posts?id=eq.${id}`,{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({content:newContent})});
+    if(r.ok){
+      loadFeed();
+    }else{alert('Error al guardar.');}
+  }catch(e){alert('Error de conexión.');}
 }
 
 async function submitResult(){
