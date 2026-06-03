@@ -597,18 +597,23 @@ async function submitResult(){
   const msg=document.getElementById('result-msg');
   if(!txt){msg.className='msg-box err show';msg.textContent='Escribe tu resultado antes de publicar.';return;}
   const isAdmin=currentUser.email===ADMIN_EMAIL;
-  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt,post_type:'result',points:50};
+  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt,post_type:'result',points:50,likes:0};
   try{
-    const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(post)});
-    if(r.ok){
+    const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=representation','Content-Type':'application/json'},body:JSON.stringify(post)});
+    const d=await r.json();
+    if(r.ok&&!d.code){
       await updateLeaderboard(50);
       closeModal('result-modal');
       document.getElementById('result-text').value='';
       document.getElementById('result-preview').textContent='Haz clic para subir imagen';
       msg.className='msg-box';
       loadFeed();loadLeaderboard();
-    }else{msg.className='msg-box err show';msg.textContent='Error al publicar. Intenta nuevamente.';}
-  }catch(e){msg.className='msg-box err show';msg.textContent='Error de conexión.';}
+    }else{
+      console.error('Post error:',d);
+      msg.className='msg-box err show';
+      msg.textContent='Error: '+(d.message||d.error||'Intenta nuevamente.');
+    }
+  }catch(e){console.error(e);msg.className='msg-box err show';msg.textContent='Error de conexión.';}
 }
 
 async function submitPost(type){
@@ -616,11 +621,13 @@ async function submitPost(type){
   const txt=document.getElementById(txtId).value.trim();
   if(!txt&&type==='question')return;
   const isAdmin=currentUser.email===ADMIN_EMAIL;
-  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt||(type==='image'?'Imagen compartida':''),post_type:type,points:0};
+  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt||(type==='image'?'Imagen compartida':''),post_type:type,points:0,likes:0};
   try{
-    const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(post)});
-    if(r.ok){closeModal(type+'-modal');document.getElementById(txtId).value='';loadFeed();}
-  }catch(e){}
+    const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=representation','Content-Type':'application/json'},body:JSON.stringify(post)});
+    const d=await r.json();
+    if(r.ok&&!d.code){closeModal(type+'-modal');document.getElementById(txtId).value='';loadFeed();}
+    else console.error('Post error:',d);
+  }catch(e){console.error(e);}
 }
 
 // LEADERBOARD
@@ -629,11 +636,11 @@ async function updateLeaderboard(pts){
     const check=await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`);
     const existing=await check.json();
     if(Array.isArray(existing)&&existing.length){
-      await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`,{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({points:existing[0].points+pts,updated_at:new Date().toISOString()})});
+      await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`,{method:'PATCH',headers:{'Prefer':'return=minimal','Content-Type':'application/json'},body:JSON.stringify({points:existing[0].points+pts,updated_at:new Date().toISOString()})});
     }else{
-      await sbFetch('/rest/v1/leaderboard',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),points:pts})});
+      await sbFetch('/rest/v1/leaderboard',{method:'POST',headers:{'Prefer':'return=minimal','Content-Type':'application/json'},body:JSON.stringify({user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),points:pts})});
     }
-  }catch(e){}
+  }catch(e){console.error('Leaderboard error:',e);}
 }
 
 async function loadLeaderboard(){
