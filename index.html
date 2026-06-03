@@ -233,6 +233,16 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);min-height:
         <button class="l-link" onclick="showLogin()">← Volver al login</button>
       </div>
     </div>
+
+    <!-- RESET PASSWORD -->
+    <div id="auth-reset" style="display:none">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;text-align:center">Crea tu nueva contraseña para acceder a Fyntrum.</div>
+      <input class="l-input" id="reset-pass" type="password" placeholder="Nueva contraseña (mín. 6 caracteres)">
+      <input class="l-input" id="reset-pass2" type="password" placeholder="Confirmar contraseña">
+      <div class="l-err" id="reset-err"></div>
+      <div class="l-ok" id="reset-ok"></div>
+      <button class="l-btn" id="reset-btn" onclick="doResetPassword()">Guardar nueva contraseña</button>
+    </div>
   </div>
 </div>
 
@@ -443,6 +453,54 @@ function getAvCls(str){const colors=['g','b','p'];return(str||'').charCodeAt(0)%
 
 async function sbFetch(path,opts={}){
   return fetch(SB_URL+path,{headers:{'apikey':SB_KEY,'Authorization':'Bearer '+(currentUser?.access_token||SB_KEY),'Content-Type':'application/json',...(opts.headers||{})},...opts});
+}
+
+// Detectar token de recuperación en la URL al cargar
+window.addEventListener('load', async () => {
+  const hash = window.location.hash;
+  const params = new URLSearchParams(hash.replace('#', '?').replace('#',''));
+  const accessToken = params.get('access_token');
+  const type = params.get('type');
+  
+  if (accessToken && (type === 'recovery' || type === 'invite')) {
+    // Guardar token para usar al cambiar contraseña
+    window._resetToken = accessToken;
+    // Mostrar pantalla de nueva contraseña
+    document.getElementById('auth-login').style.display = 'none';
+    document.getElementById('auth-forgot').style.display = 'none';
+    document.getElementById('auth-reset').style.display = 'block';
+    // Limpiar URL
+    history.replaceState(null, '', window.location.pathname);
+  }
+});
+
+async function doResetPassword() {
+  const pass = document.getElementById('reset-pass').value;
+  const pass2 = document.getElementById('reset-pass2').value;
+  const err = document.getElementById('reset-err');
+  const ok = document.getElementById('reset-ok');
+  const btn = document.getElementById('reset-btn');
+  err.classList.remove('show'); ok.classList.remove('show');
+  if (!pass || pass.length < 6) { err.textContent = 'La contraseña debe tener al menos 6 caracteres.'; err.classList.add('show'); return; }
+  if (pass !== pass2) { err.textContent = 'Las contraseñas no coinciden.'; err.classList.add('show'); return; }
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const r = await fetch(SB_URL + '/auth/v1/user', {
+      method: 'PUT',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + window._resetToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pass })
+    });
+    const d = await r.json();
+    if (d.id) {
+      ok.textContent = '✓ Contraseña guardada. Ya puedes ingresar.';
+      ok.classList.add('show');
+      setTimeout(() => { showLogin(); }, 2000);
+    } else {
+      err.textContent = 'Error al guardar. Solicita un nuevo link.';
+      err.classList.add('show');
+    }
+  } catch(e) { err.textContent = 'Error de conexión.'; err.classList.add('show'); }
+  btn.disabled = false; btn.textContent = 'Guardar nueva contraseña';
 }
 
 // AUTH
