@@ -599,17 +599,30 @@ function buildPostHTML(p){
       <button onclick="editPost('${p.id}','${p.content.replace(/'/g,"\'")}',this)" style="background:none;border:0.5px solid var(--border2);border-radius:7px;padding:4px 9px;font-size:11px;color:var(--text3);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;display:flex;align-items:center;gap:4px"><i class="ti ti-pencil"></i>Editar</button>
       <button onclick="deletePost('${p.id}',this)" style="background:none;border:0.5px solid #3A1A1A;border-radius:7px;padding:4px 9px;font-size:11px;color:#FF6060;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;display:flex;align-items:center;gap:4px"><i class="ti ti-trash"></i>Borrar</button>
     </div>`:'';
-  return`<div class="fp" id="post-${p.id}"><div class="fph"><div class="fav ${avCls}">${p.user_initials||'?'}</div><div style="flex:1"><div class="fname">${p.user_name||'Usuario'}${badge}</div><div class="ftime">${label}</div></div></div>${rtag}<div class="fbody" id="body-${p.id}">${p.content}</div><div class="ffoot"><div class="frx"><i class="ti ti-heart"></i>${p.likes||0}</div><div class="frx"><i class="ti ti-message-circle"></i>0</div>${pbadge}${actions}</div></div>`;
+  const imgHTML=p.image_url?`<div style="margin-bottom:11px"><img src="${p.image_url}" alt="imagen del trade" style="width:100%;border-radius:10px;border:0.5px solid var(--border2);max-height:400px;object-fit:cover" loading="lazy"></div>`:'';
+  return`<div class="fp" id="post-${p.id}"><div class="fph"><div class="fav ${avCls}">${p.user_initials||'?'}</div><div style="flex:1"><div class="fname">${p.user_name||'Usuario'}${badge}</div><div class="ftime">${label}</div></div></div>${rtag}<div class="fbody" id="body-${p.id}">${p.content}</div>${imgHTML}<div class="ffoot"><div class="frx"><i class="ti ti-heart"></i>${p.likes||0}</div><div class="frx"><i class="ti ti-message-circle"></i>0</div>${pbadge}${actions}</div></div>`;
 }
+
+const POST_POINTS={'result':50,'image':10,'question':5};
 
 async function deletePost(id, btn){
   if(!confirm('¿Seguro que quieres borrar este post?'))return;
   btn.disabled=true;
   try{
+    // Obtener el post para saber su tipo y puntos antes de borrar
+    const getR=await sbFetch(`/rest/v1/posts?id=eq.${id}`);
+    const posts=await getR.json();
+    const post=posts&&posts[0];
     const r=await sbFetch(`/rest/v1/posts?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':'return=minimal'}});
     if(r.ok){
       const el=document.getElementById('post-'+id);
       if(el)el.remove();
+      // Restar puntos solo si el post es del usuario actual
+      if(post&&post.user_id===currentUser.id){
+        const pts=POST_POINTS[post.post_type]||0;
+        if(pts>0)await updateLeaderboard(-pts);
+      }
+      loadLeaderboard();
     }else{alert('Error al borrar.');}
   }catch(e){alert('Error de conexión.');}
 }
@@ -647,12 +660,36 @@ async function saveEdit(id, btn){
   }catch(e){alert('Error de conexión.');}
 }
 
+async function uploadImage(file){
+  if(!file)return null;
+  try{
+    const ext=file.name.split('.').pop();
+    const fileName=`${currentUser.id}-${Date.now()}.${ext}`;
+    const r=await fetch(`${SB_URL}/storage/v1/object/post-images/${fileName}`,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+currentUser.access_token,'Content-Type':file.type},
+      body:file
+    });
+    if(r.ok){
+      return `${SB_URL}/storage/v1/object/public/post-images/${fileName}`;
+    }
+    return null;
+  }catch(e){console.error('Upload error:',e);return null;}
+}
+
 async function submitResult(){
   const txt=document.getElementById('result-text').value.trim();
   const msg=document.getElementById('result-msg');
   if(!txt){msg.className='msg-box err show';msg.textContent='Escribe tu resultado antes de publicar.';return;}
+  msg.className='msg-box ok show';msg.textContent='Publicando...';
   const isAdmin=currentUser.email===ADMIN_EMAIL;
-  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt,post_type:'result',points:50,likes:0};
+  // Subir imagen si hay
+  const fileInput=document.querySelector('#result-modal input[type=file]');
+  let imageUrl=null;
+  if(fileInput&&fileInput.files&&fileInput.files[0]){
+    imageUrl=await uploadImage(fileInput.files[0]);
+  }
+  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt,post_type:'result',points:50,likes:0,image_url:imageUrl};
   try{
     const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=representation','Content-Type':'application/json'},body:JSON.stringify(post)});
     const d=await r.json();
@@ -661,6 +698,7 @@ async function submitResult(){
       closeModal('result-modal');
       document.getElementById('result-text').value='';
       document.getElementById('result-preview').textContent='Haz clic para subir imagen';
+      if(fileInput)fileInput.value='';
       msg.className='msg-box';
       loadFeed();loadLeaderboard();
     }else{
@@ -676,12 +714,24 @@ async function submitPost(type){
   const txt=document.getElementById(txtId).value.trim();
   if(!txt&&type==='question')return;
   const isAdmin=currentUser.email===ADMIN_EMAIL;
-  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt||(type==='image'?'Imagen compartida':''),post_type:type,points:0,likes:0};
+  // Subir imagen si hay
+  const fileInput=document.querySelector(`#${type}-modal input[type=file]`);
+  let imageUrl=null;
+  if(fileInput&&fileInput.files&&fileInput.files[0]){
+    imageUrl=await uploadImage(fileInput.files[0]);
+  }
+  const pts=POST_POINTS[type]||0;
+  const post={user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),user_role:isAdmin?'admin':'member',content:txt||(type==='image'?'Imagen compartida':''),post_type:type,points:pts,likes:0,image_url:imageUrl};
   try{
     const r=await sbFetch('/rest/v1/posts',{method:'POST',headers:{'Prefer':'return=representation','Content-Type':'application/json'},body:JSON.stringify(post)});
     const d=await r.json();
-    if(r.ok&&!d.code){closeModal(type+'-modal');document.getElementById(txtId).value='';loadFeed();}
-    else console.error('Post error:',d);
+    if(r.ok&&!d.code){
+      if(pts>0)await updateLeaderboard(pts);
+      closeModal(type+'-modal');
+      document.getElementById(txtId).value='';
+      if(fileInput)fileInput.value='';
+      loadFeed();loadLeaderboard();
+    }else console.error('Post error:',d);
   }catch(e){console.error(e);}
 }
 
@@ -691,8 +741,9 @@ async function updateLeaderboard(pts){
     const check=await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`);
     const existing=await check.json();
     if(Array.isArray(existing)&&existing.length){
-      await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`,{method:'PATCH',headers:{'Prefer':'return=minimal','Content-Type':'application/json'},body:JSON.stringify({points:existing[0].points+pts,updated_at:new Date().toISOString()})});
-    }else{
+      const newPts=Math.max(0,existing[0].points+pts); // nunca baja de 0
+      await sbFetch(`/rest/v1/leaderboard?user_id=eq.${currentUser.id}`,{method:'PATCH',headers:{'Prefer':'return=minimal','Content-Type':'application/json'},body:JSON.stringify({points:newPts,updated_at:new Date().toISOString()})});
+    }else if(pts>0){
       await sbFetch('/rest/v1/leaderboard',{method:'POST',headers:{'Prefer':'return=minimal','Content-Type':'application/json'},body:JSON.stringify({user_id:currentUser.id,user_name:currentUser.name,user_initials:getInitials(currentUser.name),points:pts})});
     }
   }catch(e){console.error('Leaderboard error:',e);}
