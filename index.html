@@ -201,6 +201,20 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);min-height:
 </head>
 <body>
 
+<!-- RESET SCREEN — pantalla independiente para nueva contraseña -->
+<div id="reset-screen" style="display:none;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);padding:20px;font-family:'Plus Jakarta Sans',sans-serif">
+  <div style="background:var(--card);border:0.5px solid var(--border);border-radius:20px;padding:32px;width:380px;text-align:center">
+    <div style="font-size:26px;font-weight:700;color:var(--text);letter-spacing:-1px;margin-bottom:4px">FYNTRUM<span style="color:var(--or)">.</span></div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:28px">Crea tu contraseña para acceder</div>
+    <input class="l-input" id="reset-pass" type="password" placeholder="Nueva contraseña (mín. 6 caracteres)">
+    <input class="l-input" id="reset-pass2" type="password" placeholder="Confirmar contraseña">
+    <div class="l-err" id="reset-err"></div>
+    <div class="l-ok" id="reset-ok"></div>
+    <button class="l-btn" id="reset-btn" onclick="doResetPassword()">Guardar contraseña</button>
+    <div style="font-size:12px;color:var(--text3);margin-top:14px">¿Problemas? <a href="https://wa.link/twyo99" target="_blank" style="color:var(--or);text-decoration:none">Contacta soporte</a></div>
+  </div>
+</div>
+
 <!-- AUTH SCREEN -->
 <div id="auth-screen" class="auth-wrap">
   <div class="auth-card">
@@ -234,15 +248,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);min-height:
       </div>
     </div>
 
-    <!-- RESET PASSWORD -->
-    <div id="auth-reset" style="display:none">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;text-align:center">Crea tu nueva contraseña para acceder a Fyntrum.</div>
-      <input class="l-input" id="reset-pass" type="password" placeholder="Nueva contraseña (mín. 6 caracteres)">
-      <input class="l-input" id="reset-pass2" type="password" placeholder="Confirmar contraseña">
-      <div class="l-err" id="reset-err"></div>
-      <div class="l-ok" id="reset-ok"></div>
-      <button class="l-btn" id="reset-btn" onclick="doResetPassword()">Guardar nueva contraseña</button>
-    </div>
+
   </div>
 </div>
 
@@ -473,13 +479,10 @@ window.addEventListener('load', async () => {
   const type = params.get('type');
   
   if (accessToken && (type === 'recovery' || type === 'invite')) {
-    // Guardar token para usar al cambiar contraseña
     window._resetToken = accessToken;
-    // Mostrar pantalla de nueva contraseña
-    document.getElementById('auth-login').style.display = 'none';
-    document.getElementById('auth-forgot').style.display = 'none';
-    document.getElementById('auth-reset').style.display = 'block';
-    // Limpiar URL
+    // Ocultar auth-screen completo y mostrar pantalla de reset limpia
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('reset-screen').style.display = 'flex';
     history.replaceState(null, '', window.location.pathname);
   }
 });
@@ -504,13 +507,17 @@ async function doResetPassword() {
     if (d.id) {
       ok.textContent = '✓ Contraseña guardada. Ya puedes ingresar.';
       ok.classList.add('show');
-      setTimeout(() => { showLogin(); }, 2000);
+      setTimeout(() => {
+        document.getElementById('reset-screen').style.display = 'none';
+        document.getElementById('auth-screen').style.display = 'flex';
+        showLogin();
+      }, 2000);
     } else {
       err.textContent = 'Error al guardar. Solicita un nuevo link.';
       err.classList.add('show');
     }
   } catch(e) { err.textContent = 'Error de conexión.'; err.classList.add('show'); }
-  btn.disabled = false; btn.textContent = 'Guardar nueva contraseña';
+  btn.disabled = false; btn.textContent = 'Guardar contraseña';
 }
 
 // AUTH
